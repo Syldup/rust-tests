@@ -19,24 +19,12 @@ async fn main() -> io::Result<()> {
     let config = config::Config::from_env().unwrap();
     let pool = config.pg.create_pool(NoTls).unwrap();
 
-    let (client, connection) =
-        tokio_postgres::connect("host=localhost user=postgres", NoTls).await?;
-
-    // The connection object performs the actual communication with the database,
-    // so spawn it off to run on its own.
-    tokio::spawn(async move {
-        if let Err(e) = connection.await {
-            eprintln!("connection error: {}", e);
-        }
-    });
-
     println!("Starting server at http://{}:{}", config.server.host, config.server.port);
 
     HttpServer::new(move || {
         App::new()
             .data(pool.clone())
             .wrap(middleware::Logger::default())
-            .service(fs::Files::new("/", "static/").index_file("index.html"))
             .route("/ws/", web::get().to(websocket::index))
             .route("/todos{_:/?}", web::get().to(handlers::get_lists))
             .route("/todos{_:/?}", web::post().to(handlers::create_todo_list))
@@ -50,6 +38,7 @@ async fn main() -> io::Result<()> {
             .route("/todos/{list_id}/{item_id}{_:/?}",
                    web::put().to(handlers::check_todo),
             )
+            .service(fs::Files::new("/", "static/").index_file("index.html"))
     })
         .bind(format!("{}:{}", config.server.host, config.server.port))?
         .run()
